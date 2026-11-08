@@ -48,6 +48,18 @@
   .search input{flex:1; background:none; border:none; outline:none; color:var(--text);
     font-family:var(--mono); font-size:13px}
   .search input::placeholder{color:#a97e8c}
+  .search{position:relative}
+  .search-results{position:absolute; top:calc(100% + 8px); left:0; right:0; z-index:80; background:rgba(20,9,14,.97);
+    border:1px solid var(--panel-edge); border-radius:10px; overflow:hidden; box-shadow:0 16px 40px rgba(0,0,0,.6)}
+  .sr-item{padding:10px 14px; cursor:pointer; border-bottom:1px solid rgba(237,169,189,.10)}
+  .sr-item:last-child{border-bottom:none}
+  .sr-item:hover, .sr-item.sel{background:rgba(178,75,94,.22)}
+  .sr-title{font-size:13.5px; color:#fdf0f3; font-weight:600}
+  .sr-title .sr-where{font-family:var(--mono); font-size:9.5px; letter-spacing:.18em; color:#d8a7b8; margin-left:8px; font-weight:400}
+  .sr-snippet{font-size:12px; color:#c39aa7; line-height:1.45; margin-top:2px}
+  .sr-empty{padding:12px 14px; font-size:12.5px; color:#c39aa7}
+  .flash{animation:flashB 1.8s ease}
+  @keyframes flashB{0%,55%{box-shadow:0 0 0 2px rgba(212,175,122,.95), 0 0 24px rgba(212,175,122,.35)}100%{box-shadow:0 0 0 0 transparent}}
   .clockbox{display:flex; align-items:center; gap:14px; font-family:var(--mono); font-size:12.5px; color:var(--muted); min-width:210px; justify-content:flex-end}
   .clockbox .dot{width:8px;height:8px;border-radius:50%;background:var(--green); box-shadow:0 0 8px var(--green)}
   /* ---------- layout ---------- */
@@ -187,10 +199,11 @@
       <img class="brand-mark" src="assets/logo-mark.png" alt="">
       <div class="brand-name">SLASHER<em>SYSTEMS</em></div>
     </div>
-    <label class="search">
+    <div class="search">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a97e8c" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16.5 16.5"/></svg>
-      <input type="text" placeholder="Search Slasher Systems" aria-label="Search">
-    </label>
+      <input type="text" id="site-search" placeholder="Search Slasher Systems" aria-label="Search" autocomplete="off">
+      <div class="search-results" id="search-results" hidden></div>
+    </div>
     <div class="clockbox">
       <span class="dot"></span><span id="clock-date">—</span><span id="clock-time">—</span>
     </div>
@@ -427,6 +440,71 @@
       .catch(function(){ note.textContent = 'Something hiccuped — please email cowboy@slashersystems.com directly.'; });
     return false;
   }
+  /* ---------- site search: indexes this page's own content ---------- */
+  var SEARCH_INDEX = [];
+  (function buildIndex(){
+    var pageNames = {dash:'Dashboard', nova:'NovaAI-OS', services:'Services', stai:'StAi Connected', about:'About', contact:'Contact'};
+    document.querySelectorAll('.view').forEach(function(view){
+      var vname = view.id.replace('view-','');
+      var page = pageNames[vname] || vname;
+      var h2 = view.querySelector('h2');
+      if(h2) SEARCH_INDEX.push({view:vname, page:page, title:h2.textContent.trim(), text:(view.querySelector('p') ? view.querySelector('p').textContent.trim() : ''), el:view});
+      view.querySelectorAll('.card, .feat-card, .nova-card, .eq-row').forEach(function(block){
+        var t = block.querySelector('h3, .nc-label, .eq-formula');
+        var title = t ? t.textContent.trim() : '';
+        var body = block.textContent.replace(/\s+/g,' ').trim();
+        if(title && body) SEARCH_INDEX.push({view:vname, page:page, title:title, text:body, el:block});
+      });
+    });
+    SEARCH_INDEX.push({view:'contact', page:'Contact', title:'Email — cowboy@slashersystems.com', text:'Write to us directly at cowboy@slashersystems.com, or use the contact form.', el:document.getElementById('view-contact')});
+    SEARCH_INDEX.push({view:'dash', page:'Dashboard', title:'Freedom is lived, not a philosophy', text:'The NovaAI-OS motto: a living OS that gives users their privacy back and restricts corporate control.', el:document.getElementById('view-dash')});
+  })();
+  var searchInput = document.getElementById('site-search');
+  var searchBox = document.getElementById('search-results');
+  var srSel = -1, srHits = [];
+  function srRender(q){
+    q = q.trim().toLowerCase();
+    if(q.length < 2){ searchBox.hidden = true; srHits = []; return; }
+    var titleHits = [], textHits = [];
+    SEARCH_INDEX.forEach(function(e){
+      var inTitle = e.title.toLowerCase().indexOf(q) >= 0;
+      var inText = e.text.toLowerCase().indexOf(q) >= 0;
+      if(inTitle) titleHits.push(e); else if(inText) textHits.push(e);
+    });
+    srHits = titleHits.concat(textHits).slice(0,7); srSel = srHits.length ? 0 : -1;
+    if(!srHits.length){
+      searchBox.innerHTML = '<div class="sr-empty">Nothing on the site matches “' + q.replace(/</g,'&lt;') + '” — try “nova”, “privacy”, “paper”, “emotions” or “contact”.</div>';
+    } else {
+      searchBox.innerHTML = srHits.map(function(e,i){
+        var snip = e.text.length > 150 ? e.text.slice(0,150) + '…' : e.text;
+        return '<div class="sr-item' + (i===srSel ? ' sel' : '') + '" data-i="' + i + '"><div class="sr-title">' + e.title.replace(/</g,'&lt;') + '<span class="sr-where">' + e.page.toUpperCase() + '</span></div><div class="sr-snippet">' + snip.replace(/</g,'&lt;') + '</div></div>';
+      }).join('');
+      searchBox.querySelectorAll('.sr-item').forEach(function(item){
+        item.addEventListener('mousedown', function(ev){ ev.preventDefault(); srGo(parseInt(item.dataset.i,10)); });
+      });
+    }
+    searchBox.hidden = false;
+  }
+  function srGo(i){
+    var e = srHits[i]; if(!e) return;
+    searchBox.hidden = true; searchInput.blur();
+    show(e.view);
+    if(e.el && e.el.classList && !e.el.classList.contains('view')){
+      setTimeout(function(){ e.el.scrollIntoView({behavior:'smooth', block:'center'}); e.el.classList.remove('flash'); void e.el.offsetWidth; e.el.classList.add('flash'); }, 60);
+    }
+  }
+  searchInput.addEventListener('input', function(){ srRender(searchInput.value); });
+  searchInput.addEventListener('focus', function(){ if(searchInput.value.trim().length >= 2) srRender(searchInput.value); });
+  searchInput.addEventListener('keydown', function(ev){
+    if(ev.key === 'Enter'){ ev.preventDefault(); if(srHits.length) srGo(Math.max(0, srSel)); }
+    else if(ev.key === 'Escape'){ searchBox.hidden = true; }
+    else if(ev.key === 'ArrowDown' || ev.key === 'ArrowUp'){
+      ev.preventDefault(); if(!srHits.length) return;
+      srSel = (srSel + (ev.key === 'ArrowDown' ? 1 : -1) + srHits.length) % srHits.length;
+      searchBox.querySelectorAll('.sr-item').forEach(function(item, i){ item.classList.toggle('sel', i === srSel); });
+    }
+  });
+  document.addEventListener('click', function(ev){ if(!ev.target.closest('.search')) searchBox.hidden = true; });
   function tick(){
     var d = new Date();
     var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], mon=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
