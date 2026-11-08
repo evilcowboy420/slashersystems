@@ -425,7 +425,12 @@
     var email = form.querySelector('input[name="email"]').value;
     if(note) note.textContent = 'Sending…';
     postForm({email:email, _subject:'StAi Connected — newsletter signup', _template:'table', _captcha:'false', _honey:''})
-      .then(function(r){ if(!r.ok) throw new Error('bad'); if(note) note.textContent = 'Received — you are on the list. Welcome to StAi Connected.'; form.reset(); })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d && d.success === 'true'){ if(note) note.textContent = 'Received — you are on the list. Welcome to StAi Connected.'; form.reset(); }
+        else if(d && /ctivat/.test(d.message || '')){ if(note) note.textContent = 'Almost there — the form is being activated. Please try again in a few minutes.'; }
+        else throw new Error('bad');
+      })
       .catch(function(){ if(note) note.textContent = 'Something hiccuped — please email cowboy@slashersystems.com directly.'; });
     return false;
   }
@@ -436,7 +441,12 @@
     var message = form.querySelector('textarea[name="message"]').value;
     note.textContent = 'Sending…';
     postForm({name:name, email:email, message:message, _replyto:email, _subject:'Slasher Systems — website contact from ' + name, _template:'table', _captcha:'false', _honey:''})
-      .then(function(r){ if(!r.ok) throw new Error('bad'); note.textContent = 'Message received — thank you. We will get back to you shortly.'; form.reset(); })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d && d.success === 'true'){ note.textContent = 'Message received — thank you. We will get back to you shortly.'; form.reset(); }
+        else if(d && /ctivat/.test(d.message || '')){ note.textContent = 'Almost there — the form is being activated. Please try again in a few minutes.'; }
+        else throw new Error('bad');
+      })
       .catch(function(){ note.textContent = 'Something hiccuped — please email cowboy@slashersystems.com directly.'; });
     return false;
   }
